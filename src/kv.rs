@@ -198,21 +198,14 @@ impl KvStore {
 }
 
 fn gen_list(path: &PathBuf) -> Result<Vec<u64>> {
-    let pathbufs: Vec<PathBuf> = read_dir(path)?
-        .into_iter()
-        .flatten()
-        .map(|d| d.path())
-        .collect();
+    let pathbufs: Vec<PathBuf> = read_dir(path)?.flatten().map(|d| d.path()).collect();
     let mut numbers: Vec<u64> = pathbufs
         .iter()
         .map(|p| p.file_stem())
-        .into_iter()
         .flatten()
         .map(|s| s.to_str())
-        .into_iter()
         .flatten()
         .map(|s| s.parse::<u64>())
-        .into_iter()
         .flatten()
         .collect::<Vec<u64>>();
     numbers.sort();
