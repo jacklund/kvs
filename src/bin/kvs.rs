@@ -1,6 +1,8 @@
+extern crate serde_json;
 extern crate structopt;
 
-use std::process::exit;
+use kvs::{KvStore, KvsCommands, KvsError, Result};
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -9,21 +11,26 @@ struct KvsOptions {
     command: KvsCommands,
 }
 
-#[derive(Debug, StructOpt)]
-enum KvsCommands {
-    #[structopt(name = "get")]
-    Get { key: String },
+fn main() -> Result<()> {
+    let opts = KvsOptions::from_args();
 
-    #[structopt(name = "rm")]
-    Remove { key: String },
+    let mut store = KvStore::open(".")?;
 
-    #[structopt(name = "set")]
-    Set { key: String, value: String },
-}
+    match opts.command {
+        KvsCommands::Get { ref key } => match store.get(key.to_string())? {
+            Some(value) => println!("{}", value),
+            None => println!("Key not found"),
+        },
+        KvsCommands::Set { key, value } => store.set(key, value)?,
+        KvsCommands::Remove { key } => match store.remove(key) {
+            Ok(_) => (),
+            Err(KvsError::KeyNotFound) => {
+                println!("Key not found");
+                std::process::exit(1);
+            }
+            Err(error) => return Err(error),
+        },
+    }
 
-fn main() {
-    KvsOptions::from_args();
-
-    eprintln!("unimplemented");
-    exit(1);
+    Ok(())
 }
