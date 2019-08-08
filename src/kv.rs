@@ -165,34 +165,45 @@ impl KvStore {
     }
 
     fn compact(&mut self) -> Result<()> {
+        // Get list of files we need to delete
         let list = gen_list(&self.path)?;
+
+        // Increment the generation counter
         self.gen += 1;
+
+        // New writer, and clear out the store
         self.writer = KvWriter::new(open_log_file(&self.path, self.gen, false)?)?;
         let store = self.store.clone();
         self.store.clear();
+
+        // Read from the old files and write the new
         for (key, location) in store.iter() {
             let reader = self
                 .readers
                 .get_mut(&location.gen)
                 .expect("Cannot find log reader");
             reader.seek(SeekFrom::Start(location.offset))?;
-            let data = reader.take(location.length as u64);
-            let command = serde_json::from_reader(data)?;
+            let command = serde_json::from_reader(reader.take(location.length as u64))?;
             if let KvsCommands::Set { value, .. } = command {
                 self.set(key.to_string(), value)?;
             } else {
                 return Err(KvsError::UnexpectedCommandType);
             }
         }
+
+        // Delete all the old files
         for gen in list {
             let path = log_file(&self.path, gen)?;
             remove_file(path)?;
         }
+
+        // Generate new readers
         self.readers.clear();
         for gen in gen_list(&self.path)? {
             let reader = get_reader(&self.path, gen)?;
             self.readers.insert(gen, reader);
         }
+
         Ok(())
     }
 }
