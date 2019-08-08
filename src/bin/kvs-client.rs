@@ -40,7 +40,7 @@ fn main() -> Result<()> {
             )?;
         }
         KvsCommands::Remove { key } => {
-            serde_json::to_writer(&mut stream, &KvsCommands::Remove { key: key })?;
+            serde_json::to_writer(&mut stream, &KvsCommands::Remove { key })?;
         }
     }
 

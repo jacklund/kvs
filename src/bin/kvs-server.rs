@@ -42,7 +42,7 @@ fn handle_client(stream: TcpStream) -> Result<()> {
     let mut command_stream =
         serde_json::Deserializer::from_reader(stream).into_iter::<KvsCommands>();
 
-    while let Some(command) = command_stream.next() {
+    for command in command_stream {
         info!("Got command: {:?}", command?);
     }
 
