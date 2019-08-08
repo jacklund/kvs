@@ -1,11 +1,10 @@
-use crate::{KvsError, Result};
-use serde::{Deserialize, Serialize};
+use crate::KvsEngine;
+use crate::{KvsCommands, KvsError, Result};
 use serde_json;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-use structopt::StructOpt;
 
 pub struct KvStore {
     store: HashMap<String, FileLocation>,
@@ -60,18 +59,6 @@ impl<W: Write + Seek> Write for KvWriter<W> {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, StructOpt)]
-pub enum KvsCommands {
-    #[structopt(name = "get")]
-    Get { key: String },
-
-    #[structopt(name = "rm")]
-    Remove { key: String },
-
-    #[structopt(name = "set")]
-    Set { key: String, value: String },
-}
-
 const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
 
 impl KvStore {
@@ -100,68 +87,6 @@ impl KvStore {
             compactible,
             path,
         })
-    }
-
-    pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let original_offset = self.writer.offset;
-        serde_json::to_writer(
-            &mut self.writer,
-            &KvsCommands::Set {
-                key: key.clone(),
-                value: value.clone(),
-            },
-        )?;
-        self.writer.flush()?;
-        let old_location = self.store.insert(
-            key,
-            FileLocation::new(
-                self.gen,
-                original_offset,
-                self.writer.offset - original_offset,
-            ),
-        );
-        if let Some(location) = old_location {
-            self.compactible += location.length;
-            if self.compactible >= COMPACTION_THRESHOLD {
-                self.compact()?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        match self.store.get(&key) {
-            None => Ok(None),
-            Some(location) => {
-                let reader = self
-                    .readers
-                    .get_mut(&location.gen)
-                    .expect("Cannot find log reader");
-                reader.seek(SeekFrom::Start(location.offset))?;
-                let command = serde_json::from_reader(reader.take(location.length as u64))?;
-                if let KvsCommands::Set { value, .. } = command {
-                    Ok(Some(value))
-                } else {
-                    Err(KvsError::UnexpectedCommandType)
-                }
-            }
-        }
-    }
-
-    pub fn remove(&mut self, key: String) -> Result<()> {
-        match self.store.remove(&key) {
-            Some(location) => {
-                let orig_offset = self.writer.offset;
-                serde_json::to_writer(&mut self.writer, &KvsCommands::Remove { key })?;
-                let command_size = self.writer.offset - orig_offset;
-                self.compactible += location.length + command_size;
-                if self.compactible >= COMPACTION_THRESHOLD {
-                    self.compact()?;
-                }
-                Ok(())
-            }
-            None => Err(KvsError::KeyNotFound),
-        }
     }
 
     fn compact(&mut self) -> Result<()> {
@@ -205,6 +130,70 @@ impl KvStore {
         }
 
         Ok(())
+    }
+}
+
+impl KvsEngine for KvStore {
+    fn get(&mut self, key: String) -> Result<Option<String>> {
+        match self.store.get(&key) {
+            None => Ok(None),
+            Some(location) => {
+                let reader = self
+                    .readers
+                    .get_mut(&location.gen)
+                    .expect("Cannot find log reader");
+                reader.seek(SeekFrom::Start(location.offset))?;
+                let command = serde_json::from_reader(reader.take(location.length as u64))?;
+                if let KvsCommands::Set { value, .. } = command {
+                    Ok(Some(value))
+                } else {
+                    Err(KvsError::UnexpectedCommandType)
+                }
+            }
+        }
+    }
+
+    fn set(&mut self, key: String, value: String) -> Result<()> {
+        let original_offset = self.writer.offset;
+        serde_json::to_writer(
+            &mut self.writer,
+            &KvsCommands::Set {
+                key: key.clone(),
+                value: value.clone(),
+            },
+        )?;
+        self.writer.flush()?;
+        let old_location = self.store.insert(
+            key,
+            FileLocation::new(
+                self.gen,
+                original_offset,
+                self.writer.offset - original_offset,
+            ),
+        );
+        if let Some(location) = old_location {
+            self.compactible += location.length;
+            if self.compactible >= COMPACTION_THRESHOLD {
+                self.compact()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn remove(&mut self, key: String) -> Result<()> {
+        match self.store.remove(&key) {
+            Some(location) => {
+                let orig_offset = self.writer.offset;
+                serde_json::to_writer(&mut self.writer, &KvsCommands::Remove { key })?;
+                let command_size = self.writer.offset - orig_offset;
+                self.compactible += location.length + command_size;
+                if self.compactible >= COMPACTION_THRESHOLD {
+                    self.compact()?;
+                }
+                Ok(())
+            }
+            None => Err(KvsError::KeyNotFound),
+        }
     }
 }
 
