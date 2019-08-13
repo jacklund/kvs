@@ -2,10 +2,12 @@ use crate::KvsEngine;
 use crate::{KvsCommands, KvsError, Result};
 use serde_json;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct KvStore {
     store: HashMap<String, FileLocation>,
     writer: KvWriter<File>,
@@ -15,29 +17,21 @@ pub struct KvStore {
     path: PathBuf,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, new)]
 pub struct FileLocation {
     gen: u64,
     offset: u64,
     length: u64,
 }
 
-impl FileLocation {
-    pub fn new(gen: u64, offset: u64, length: u64) -> Self {
-        FileLocation {
-            gen,
-            offset,
-            length,
-        }
-    }
-}
-
+#[derive(Debug)]
 pub struct KvWriter<W: Write + Seek> {
     writer: BufWriter<W>,
     offset: u64,
 }
 
-impl<W: Write + Seek> KvWriter<W> {
+impl<W: Write + Seek + Debug> KvWriter<W> {
+    #[logfn(Trace)]
     pub fn new(mut writer: W) -> Result<Self> {
         let offset = writer.seek(SeekFrom::End(0))?;
         Ok(KvWriter {
@@ -48,12 +42,14 @@ impl<W: Write + Seek> KvWriter<W> {
 }
 
 impl<W: Write + Seek> Write for KvWriter<W> {
+    #[logfn(Trace)]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len = self.writer.write(buf)?;
         self.offset += len as u64;
         Ok(buf.len())
     }
 
+    #[logfn(Trace)]
     fn flush(&mut self) -> io::Result<()> {
         self.writer.flush()
     }
@@ -62,6 +58,7 @@ impl<W: Write + Seek> Write for KvWriter<W> {
 const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
 
 impl KvStore {
+    #[logfn(Trace)]
     pub fn open(path: impl Into<PathBuf>) -> Result<KvStore> {
         let path = path.into();
         create_dir_all(&path)?;
@@ -93,6 +90,7 @@ impl KvStore {
         })
     }
 
+    #[logfn(Trace)]
     fn compact(&mut self) -> Result<()> {
         debug!("Compacting, compactible = {}", self.compactible);
         // Get list of files we need to delete
@@ -141,6 +139,7 @@ impl KvStore {
 }
 
 impl KvsEngine for KvStore {
+    #[logfn(Trace)]
     fn get(&mut self, key: String) -> Result<Option<String>> {
         debug!("KvStore::get({})", key);
         match self.store.get(&key) {
@@ -161,6 +160,7 @@ impl KvsEngine for KvStore {
         }
     }
 
+    #[logfn(Trace)]
     fn set(&mut self, key: String, value: String) -> Result<()> {
         debug!("KvStore::set({}, {})", key, value);
         let original_offset = self.writer.offset;
@@ -189,6 +189,7 @@ impl KvsEngine for KvStore {
         Ok(())
     }
 
+    #[logfn(Trace)]
     fn remove(&mut self, key: String) -> Result<()> {
         debug!("KvStore::remove({})", key);
         match self.store.remove(&key) {
@@ -208,6 +209,7 @@ impl KvsEngine for KvStore {
     }
 }
 
+#[logfn(Trace)]
 fn gen_list(path: &PathBuf) -> Result<Vec<u64>> {
     let pathbufs: Vec<PathBuf> = read_dir(path)?.flatten().map(|d| d.path()).collect();
     let mut numbers: Vec<u64> = pathbufs
@@ -223,10 +225,12 @@ fn gen_list(path: &PathBuf) -> Result<Vec<u64>> {
     Ok(numbers)
 }
 
+#[logfn(Trace)]
 fn log_file(path: &PathBuf, gen: u64) -> Result<PathBuf> {
     Ok(path.join(format!("{}.log", gen.to_string())))
 }
 
+#[logfn(Trace)]
 fn open_log_file(path: &PathBuf, gen: u64, readonly: bool) -> Result<File> {
     let log_file_path = log_file(path, gen)?;
 
@@ -241,10 +245,12 @@ fn open_log_file(path: &PathBuf, gen: u64, readonly: bool) -> Result<File> {
     }
 }
 
+#[logfn(Trace)]
 fn get_reader(path: &PathBuf, gen: u64) -> Result<BufReader<File>> {
     Ok(BufReader::new(open_log_file(path, gen, true)?))
 }
 
+#[logfn(Trace)]
 fn load(
     gen: u64,
     reader: &mut BufReader<File>,

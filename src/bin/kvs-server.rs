@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate clap;
+#[macro_use]
+extern crate derive_new;
 extern crate env_logger;
 #[macro_use]
 extern crate log;
@@ -48,15 +50,12 @@ arg_enum! {
     }
 }
 
+#[derive(new)]
 struct Server<E: KvsEngine> {
     engine: E,
 }
 
 impl<E: KvsEngine> Server<E> {
-    fn new(engine: E) -> Server<E> {
-        Server { engine }
-    }
-
     fn start(&mut self, address: &SocketAddr) -> Result<()> {
         let listener = TcpListener::bind(address.clone())?;
         info!("listening on {}", address);

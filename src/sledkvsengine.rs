@@ -16,6 +16,7 @@ impl SledKvsEngine {
 }
 
 impl KvsEngine for SledKvsEngine {
+    #[logfn(Trace)]
     fn get(&mut self, key: String) -> Result<Option<String>> {
         Ok(self
             .db
@@ -25,12 +26,14 @@ impl KvsEngine for SledKvsEngine {
             .transpose()?)
     }
 
+    #[logfn(Trace)]
     fn set(&mut self, key: String, value: String) -> Result<()> {
         self.db.set(key.clone(), value.as_bytes())?;
         self.db.flush()?;
         Ok(())
     }
 
+    #[logfn(Trace)]
     fn remove(&mut self, key: String) -> Result<()> {
         let ret = match self.db.del(key)? {
             Some(_) => {
