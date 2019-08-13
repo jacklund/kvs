@@ -310,14 +310,14 @@ fn cli_access_server(engine: &str, addr: &str) {
 
     Command::cargo_bin("kvs-client")
         .unwrap()
-        .args(&["get", "key2", "--addr", addr])
+        .args(&["--addr", addr, "get", "key2"])
         .current_dir(&temp_dir)
         .assert()
         .success()
         .stdout(contains("value3"));
     Command::cargo_bin("kvs-client")
         .unwrap()
-        .args(&["get", "key1", "--addr", addr])
+        .args(&["--addr", addr, "get", "key1"])
         .current_dir(&temp_dir)
         .assert()
         .success()

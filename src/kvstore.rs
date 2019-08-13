@@ -79,6 +79,10 @@ impl KvStore {
         if latest_gen == 1 && readers.is_empty() {
             readers.insert(latest_gen, get_reader(&path, latest_gen)?);
         }
+        debug!(
+            "KvStore::open, gen = {}, compactible = {}, path = {:?}",
+            latest_gen, compactible, path
+        );
         Ok(KvStore {
             store,
             writer,
@@ -90,11 +94,13 @@ impl KvStore {
     }
 
     fn compact(&mut self) -> Result<()> {
+        debug!("Compacting, compactible = {}", self.compactible);
         // Get list of files we need to delete
         let list = gen_list(&self.path)?;
 
         // Increment the generation counter
         self.gen += 1;
+        debug!("Compacting, new gen = {}", self.gen);
 
         // New writer, and clear out the store
         self.writer = KvWriter::new(open_log_file(&self.path, self.gen, false)?)?;
@@ -119,6 +125,7 @@ impl KvStore {
         // Delete all the old files
         for gen in list {
             let path = log_file(&self.path, gen)?;
+            debug!("Compacting, deleting gen file {:?}", path);
             remove_file(path)?;
         }
 
@@ -135,6 +142,7 @@ impl KvStore {
 
 impl KvsEngine for KvStore {
     fn get(&mut self, key: String) -> Result<Option<String>> {
+        debug!("KvStore::get({})", key);
         match self.store.get(&key) {
             None => Ok(None),
             Some(location) => {
@@ -154,6 +162,7 @@ impl KvsEngine for KvStore {
     }
 
     fn set(&mut self, key: String, value: String) -> Result<()> {
+        debug!("KvStore::set({}, {})", key, value);
         let original_offset = self.writer.offset;
         serde_json::to_writer(
             &mut self.writer,
@@ -181,10 +190,12 @@ impl KvsEngine for KvStore {
     }
 
     fn remove(&mut self, key: String) -> Result<()> {
+        debug!("KvStore::remove({})", key);
         match self.store.remove(&key) {
             Some(location) => {
                 let orig_offset = self.writer.offset;
                 serde_json::to_writer(&mut self.writer, &KvsCommands::Remove { key })?;
+                self.writer.flush()?;
                 let command_size = self.writer.offset - orig_offset;
                 self.compactible += location.length + command_size;
                 if self.compactible >= COMPACTION_THRESHOLD {

@@ -6,6 +6,7 @@ extern crate structopt;
 
 use kvs::{KvsCommands, Result};
 
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::TcpStream;
 use structopt::StructOpt;
 
@@ -22,17 +23,18 @@ fn main() -> Result<()> {
     env_logger::init();
     let opts = KvsOptions::from_args();
 
-    info!("Connecting to {}", opts.address);
-    let mut stream = TcpStream::connect(opts.address)?;
-    debug!("Connected to {:?}", stream);
+    let stream = TcpStream::connect(opts.address)?;
+
+    let mut reader = BufReader::new(&stream);
+    let mut writer = BufWriter::new(&stream);
 
     match opts.command {
-        KvsCommands::Get { ref key } => {
-            serde_json::to_writer(&mut stream, &KvsCommands::Get { key: key.clone() })?;
+        KvsCommands::Get { key } => {
+            serde_json::to_writer(&mut writer, &KvsCommands::Get { key })?;
         }
         KvsCommands::Set { key, value } => {
             serde_json::to_writer(
-                &mut stream,
+                &mut writer,
                 &KvsCommands::Set {
                     key: key.clone(),
                     value: value.clone(),
@@ -40,7 +42,18 @@ fn main() -> Result<()> {
             )?;
         }
         KvsCommands::Remove { key } => {
-            serde_json::to_writer(&mut stream, &KvsCommands::Remove { key })?;
+            serde_json::to_writer(&mut writer, &KvsCommands::Remove { key })?;
+        }
+    }
+    writer.flush()?;
+    let mut buffer = String::new();
+    reader.read_to_string(&mut buffer)?;
+    if !buffer.is_empty() {
+        if buffer.starts_with("Server error:") {
+            eprintln!("{}", buffer);
+            std::process::exit(1);
+        } else {
+            println!("{}", buffer);
         }
     }
 

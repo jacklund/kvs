@@ -1,18 +1,49 @@
-use crate::KvsEngine;
-use crate::Result;
+use crate::{KvsEngine, KvsError, Result};
 
-pub struct SledKvsEngine {}
+use sled::Db;
+use std::path::PathBuf;
+
+pub struct SledKvsEngine {
+    db: Db,
+}
+
+impl SledKvsEngine {
+    pub fn open(pathbuf: impl Into<PathBuf>) -> Result<SledKvsEngine> {
+        Ok(SledKvsEngine {
+            db: Db::start_default(&pathbuf.into())?,
+        })
+    }
+}
 
 impl KvsEngine for SledKvsEngine {
-    fn get(&mut self, _key: String) -> Result<Option<String>> {
-        unimplemented!()
+    fn get(&mut self, key: String) -> Result<Option<String>> {
+        Ok(self
+            .db
+            .get(key)?
+            .map(|i_vec| AsRef::<[u8]>::as_ref(&i_vec).to_vec())
+            .map(String::from_utf8)
+            .transpose()?)
     }
 
-    fn set(&mut self, _key: String, _value: String) -> Result<()> {
-        unimplemented!()
+    fn set(&mut self, key: String, value: String) -> Result<()> {
+        self.db.set(key.clone(), value.as_bytes())?;
+        self.db.flush()?;
+        Ok(())
     }
 
-    fn remove(&mut self, _key: String) -> Result<()> {
-        unimplemented!()
+    fn remove(&mut self, key: String) -> Result<()> {
+        let ret = match self.db.del(key)? {
+            Some(_) => {
+                debug!("remove, found previous value");
+                Ok(())
+            }
+            None => {
+                debug!("remove, no previous value found");
+                Err(KvsError::KeyNotFound)
+            }
+        };
+        self.db.flush()?;
+
+        ret
     }
 }

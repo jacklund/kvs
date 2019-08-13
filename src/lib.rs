@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate log;
 extern crate serde;
 extern crate structopt;
 
@@ -9,6 +11,7 @@ pub mod sledkvsengine;
 pub use error::{KvsError, Result};
 pub use kvsengine::KvsEngine;
 pub use kvstore::KvStore;
+pub use sledkvsengine::SledKvsEngine;
 
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
