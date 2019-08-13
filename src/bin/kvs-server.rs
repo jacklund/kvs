@@ -10,7 +10,7 @@ use kvs::{KvStore, KvsCommands, KvsEngine, Result, SledKvsEngine};
 
 use env_logger::Builder;
 use log::LevelFilter;
-use std::env::current_dir;
+use std::env::{current_dir, var_os};
 use std::fs::read_to_string;
 use std::io::{BufReader, BufWriter, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -80,19 +80,19 @@ impl<E: KvsEngine> Server<E> {
 
         for command_result in command_stream {
             let command = command_result?;
-            info!("Got command: {:?}", command);
+            debug!("Got command: {:?}", command);
             match command {
                 KvsCommands::Get { key } => {
-                    info!("Get, key = {}", key);
+                    debug!("Get, key = {}", key);
                     match self.engine.get(key) {
                         Ok(response) => {
                             match response {
                                 None => {
-                                    info!("Got None");
+                                    debug!("Got None");
                                     writer.write(b"Key not found")?;
                                 }
                                 Some(value) => {
-                                    info!("Got {}", value);
+                                    debug!("Got {}", value);
                                     writer.write(value.as_bytes())?;
                                 }
                             };
@@ -125,14 +125,18 @@ impl<E: KvsEngine> Server<E> {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
-    let mut builder = Builder::new();
-    builder.filter_level(LevelFilter::Info);
+    // Default log level is "info"
+    match var_os("RUST_LOG") {
+        None => {
+            let mut builder = Builder::from_default_env();
+            builder.filter_level(LevelFilter::Info).init();
+        }
+        Some(_) => env_logger::init(),
+    };
 
     let opts = KvsOptions::from_args();
 
     info!("kvs {}", crate_version!());
-    info!("{}", env!("CARGO_PKG_VERSION"));
 
     let arg_engine = opts.engine.unwrap_or(DEFAULT_ENGINE);
     debug!("Engine {} from command line args", arg_engine);
@@ -144,7 +148,7 @@ fn main() -> Result<()> {
         }
     }
 
-    info!("Using {} engine", arg_engine);
+    debug!("Using {} engine", arg_engine);
 
     write_current_engine_name(arg_engine)?;
 
